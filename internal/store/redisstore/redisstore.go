@@ -217,6 +217,28 @@ func (s *Store) TrendingScore(ctx context.Context, itemID int64) (float64, error
 	return score, err
 }
 
+// TrendingScores returns the current global trending score for each id (0 for
+// missing), in one round-trip via ZMScore. Used to fill the popularity feature
+// for ranking without N calls.
+func (s *Store) TrendingScores(ctx context.Context, ids []int64) (map[int64]float64, error) {
+	out := make(map[int64]float64, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	members := make([]string, len(ids))
+	for i, id := range ids {
+		members[i] = itoa(id)
+	}
+	scores, err := s.rdb.ZMScore(ctx, trendGlobalKey, members...).Result()
+	if err != nil {
+		return nil, err
+	}
+	for i, sc := range scores {
+		out[ids[i]] = sc // missing members come back as 0
+	}
+	return out, nil
+}
+
 // --- profile read (called by the API on every request) ---
 
 // GetProfile assembles the user's live profile from the individual keys. Missing
