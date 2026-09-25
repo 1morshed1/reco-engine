@@ -15,6 +15,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/1morshed1/reco-engine/internal/catalog"
 	"github.com/1morshed1/reco-engine/internal/models"
 	"github.com/1morshed1/reco-engine/internal/store/postgres"
 	"github.com/1morshed1/reco-engine/internal/store/redisstore"
@@ -35,16 +36,19 @@ func DefaultConfig() Config {
 	return Config{ANNTopK: 100, RecentWindow: 10, CoOccPerItem: 10, TrendingK: 50, FreshK: 30, FreshDays: 30}
 }
 
-// Retriever fans out to the stores.
+// Retriever fans out to the stores. Postgres is used only for ANN (it needs the
+// pgvector index); item hydration and fresh listing are served from the in-memory
+// catalog to keep the hot path off the database (see docs/11).
 type Retriever struct {
 	redis *redisstore.Store
 	pg    *postgres.Store
+	cat   *catalog.Store
 	cfg   Config
 }
 
 // New builds a Retriever.
-func New(rs *redisstore.Store, pg *postgres.Store, cfg Config) *Retriever {
-	return &Retriever{redis: rs, pg: pg, cfg: cfg}
+func New(rs *redisstore.Store, pg *postgres.Store, cat *catalog.Store, cfg Config) *Retriever {
+	return &Retriever{redis: rs, pg: pg, cat: cat, cfg: cfg}
 }
 
 // Retrieve runs all four sources concurrently and returns the deduplicated pool.
@@ -90,7 +94,7 @@ func (r *Retriever) Retrieve(ctx context.Context, p models.UserProfile) []models
 				idSet[id] = struct{}{}
 			}
 		}
-		add(hydrate(ctx, r.pg, keys(idSet), "collab"))
+		add(r.cat.ByIDs(keys(idSet), "collab"))
 	}()
 
 	// Source 3: trending in the user's preferred categories.
@@ -101,39 +105,18 @@ func (r *Retriever) Retrieve(ctx context.Context, p models.UserProfile) []models
 		if err != nil {
 			return
 		}
-		add(hydrate(ctx, r.pg, ids, "trending"))
+		add(r.cat.ByIDs(ids, "trending"))
 	}()
 
-	// Source 4: fresh items (exploration).
+	// Source 4: fresh items (exploration) — served from the in-memory catalog.
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if c, err := r.pg.RecentItems(ctx, p.PreferredCategories, r.cfg.FreshK, r.cfg.FreshDays); err == nil {
-			add(c)
-		}
+		add(r.cat.Fresh(p.PreferredCategories, r.cfg.FreshK, r.cfg.FreshDays))
 	}()
 
 	wg.Wait()
 	return deduplicate(all)
-}
-
-// hydrate turns a set of item IDs into candidates with full metadata + embeddings.
-func hydrate(ctx context.Context, pg *postgres.Store, ids []int64, source string) []models.Candidate {
-	if len(ids) == 0 {
-		return nil
-	}
-	byID, err := pg.GetItemsByIDs(ctx, ids)
-	if err != nil {
-		return nil
-	}
-	out := make([]models.Candidate, 0, len(ids))
-	for _, id := range ids {
-		if c, ok := byID[id]; ok {
-			c.Source = source
-			out = append(out, c)
-		}
-	}
-	return out
 }
 
 // deduplicate collapses items appearing from multiple sources into one candidate.

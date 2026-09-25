@@ -19,6 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/1morshed1/reco-engine/internal/candidates"
+	"github.com/1morshed1/reco-engine/internal/catalog"
 	"github.com/1morshed1/reco-engine/internal/config"
 	"github.com/1morshed1/reco-engine/internal/metrics"
 	"github.com/1morshed1/reco-engine/internal/ranking"
@@ -45,7 +46,15 @@ func main() {
 	}
 	defer rs.Close()
 
-	retriever := candidates.New(rs, pg, candidates.DefaultConfig())
+	// Load the catalog into memory once so the request path stays off Postgres
+	// for item hydration and fresh listing (only ANN still queries the DB).
+	cat, err := catalog.Load(initCtx, pg)
+	if err != nil {
+		log.Fatalf("catalog: %v", err)
+	}
+	log.Printf("catalog cached in memory: %d items", cat.Size())
+
+	retriever := candidates.New(rs, pg, cat, candidates.DefaultConfig())
 	ranker := ranking.New(ranking.DefaultWeights())
 	svc := recommender.New(rs, pg, retriever, ranker, recommender.DefaultConfig())
 

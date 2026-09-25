@@ -41,6 +41,7 @@ build: ## Compile all binaries into ./bin
 	go build -o bin/producer  ./cmd/producer
 	go build -o bin/eval      ./cmd/eval
 	go build -o bin/batch     ./cmd/batch
+	go build -o bin/loadtest  ./cmd/loadtest
 
 .PHONY: migrate
 migrate: ## Apply DB schema (idempotent)
@@ -69,6 +70,10 @@ eval: ## Run offline evaluation (precision@k, recall@k, nDCG)
 .PHONY: batch
 batch: ## Run the nightly batch job (embeddings, co-occurrence, trending rescale)
 	go run ./cmd/batch
+
+.PHONY: loadtest
+loadtest: ## Benchmark the API (throughput + latency percentiles)
+	go run ./cmd/loadtest -c 50 -d 12s -users 500
 
 .PHONY: test
 test: ## Run unit tests

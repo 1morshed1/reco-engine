@@ -26,8 +26,19 @@ type Store struct {
 }
 
 // New opens a pooled connection to Postgres and verifies it with a ping.
+//
+// The pool size matters for serving: the request path issues several queries per
+// recommendation (ANN, item hydration, fresh), and under concurrency a too-small
+// pool serializes them and inflates p99. We size it well above the default so
+// concurrent requests don't queue on connections (see docs/11).
 func New(ctx context.Context, dsn string) (*Store, error) {
-	pool, err := pgxpool.New(ctx, dsn)
+	cfg, err := pgxpool.ParseConfig(dsn)
+	if err != nil {
+		return nil, fmt.Errorf("parse dsn: %w", err)
+	}
+	cfg.MaxConns = 30
+	cfg.MinConns = 5
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("connect postgres: %w", err)
 	}

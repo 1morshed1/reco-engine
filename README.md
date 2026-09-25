@@ -50,37 +50,61 @@ Prereqs: Docker + Docker Compose, Go 1.24+.
 ```bash
 make up          # start postgres, redis, kafka, prometheus
 make tidy        # resolve Go dependencies
-make migrate     # create the DB schema
-make seed        # load the catalog + generate item embeddings
-make processor   # (terminal 2) consume events, update Redis
-make producer    # (terminal 3) simulate user activity into Kafka
-make api         # (terminal 4) serve recommendations on :8080
+make seed        # apply schema, load catalog, embeddings, ANN index, history
 ```
 
-Then:
+Then, in separate terminals, run the streaming + serving stack:
 
 ```bash
-curl 'http://localhost:8080/api/v1/recommend/1?n=10'
+make processor   # terminal 2: consume events -> update Redis
+make producer    # terminal 3: simulate live user activity into Kafka
+make api         # terminal 4: serve recommendations on :8080
 ```
 
-Offline quality metrics:
+Query it:
 
 ```bash
-make eval        # precision@k, recall@k, nDCG, coverage
+curl 'http://localhost:8080/api/v1/recommend/42?n=10'      # recommendations
+curl -XPOST localhost:8080/api/v1/click \
+  -H 'Content-Type: application/json' -d '{"user_id":42,"item_id":1156}'
+curl localhost:8080/metrics                                 # prometheus metrics
 ```
+
+Offline quality, the nightly batch job, and a load test:
+
+```bash
+make eval        # precision@k, recall@k, nDCG, coverage (3 strategies compared)
+make batch       # recompute embeddings, rebuild co-occurrence, rescale trending
+make loadtest    # throughput + latency percentiles
+make test        # unit tests
+```
+
+## Results
+
+- **Quality** (offline, leakage-free eval): personalized strategies beat the
+  popularity baseline on precision/recall/nDCG; the full pipeline has the best
+  nDCG and **~30x the catalog coverage** of popularity (0.21 vs 0.007 — it escapes
+  the filter bubble). See `docs/09`.
+- **Latency**: the pipeline serves at **p50 ~4ms, p99 ~8.5ms** — well under the
+  50ms target. (Under a single-laptop-shared-with-all-services load test at c=50,
+  p99 rises to ~60ms due to CPU contention, not the pipeline; see `docs/11`.)
+- **Personalization works**: a SciFi-leaning user gets SciFi recommendations; a
+  brand-new user is served gracefully from trending/fresh (cold start).
 
 ## Repository layout
 
 ```
-cmd/         entrypoints: api, processor, seed, producer, eval
-internal/    the engine: config, models, store/*, events, profile,
-             candidates, ranking, diversity, recommender, metrics
-migrations/  SQL schema
+cmd/         entrypoints: api, processor, seed, producer, eval, batch, loadtest
+internal/    the engine: config, models, store/{postgres,redisstore},
+             catalog, embedding, dataset, events, profile, candidates,
+             ranking, diversity, recommender, metrics
+migrations/  SQL schema (embedded)
 deploy/      prometheus config
-docs/        the learning journal — read this
+docs/        the learning journal — read docs/README.md first
 ```
 
 ## Status
 
-See the docs and git history; this is built and committed in phases, each with
-its own learning doc.
+Complete and runnable. Built in phases, each with its own learning doc in
+`docs/` and its own commit. The `docs/` folder is the primary deliverable — it
+explains every decision so the codebase doubles as a course.
