@@ -40,6 +40,7 @@ build: ## Compile all binaries into ./bin
 	go build -o bin/seed      ./cmd/seed
 	go build -o bin/producer  ./cmd/producer
 	go build -o bin/eval      ./cmd/eval
+	go build -o bin/batch     ./cmd/batch
 
 .PHONY: migrate
 migrate: ## Apply DB schema (idempotent)
@@ -64,6 +65,10 @@ producer: ## Simulate user events into Kafka
 .PHONY: eval
 eval: ## Run offline evaluation (precision@k, recall@k, nDCG)
 	go run ./cmd/eval
+
+.PHONY: batch
+batch: ## Run the nightly batch job (embeddings, co-occurrence, trending rescale)
+	go run ./cmd/batch
 
 .PHONY: test
 test: ## Run unit tests

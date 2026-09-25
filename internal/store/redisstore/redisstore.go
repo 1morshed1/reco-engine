@@ -239,6 +239,95 @@ func (s *Store) TrendingScores(ctx context.Context, ids []int64) (map[int64]floa
 	return out, nil
 }
 
+// RescaleTrending divides every trending score (global + per-category sets) by a
+// common factor so the exponential-increment scores can't grow without bound
+// (docs/05 overflow caveat). Dividing all scores by the same factor preserves
+// ranking exactly. The factor is the current global maximum, which renames the
+// top item's score to ~1. Returns the factor applied (0 if nothing to do).
+//
+// This is the production fix the batch layer performs periodically.
+func (s *Store) RescaleTrending(ctx context.Context) (float64, error) {
+	// Find the global max.
+	top, err := s.rdb.ZRevRangeWithScores(ctx, trendGlobalKey, 0, 0).Result()
+	if err != nil || len(top) == 0 {
+		return 0, err
+	}
+	factor := top[0].Score
+	if factor <= 1 {
+		return 0, nil // already small; nothing to gain
+	}
+	// Collect every trending key (global + per-category).
+	keys := []string{trendGlobalKey}
+	iter := s.rdb.Scan(ctx, 0, "trending:*", 100).Iterator()
+	for iter.Next(ctx) {
+		keys = append(keys, iter.Val())
+	}
+	if err := iter.Err(); err != nil {
+		return 0, err
+	}
+	for _, key := range keys {
+		members, err := s.rdb.ZRangeWithScores(ctx, key, 0, -1).Result()
+		if err != nil {
+			return 0, err
+		}
+		if len(members) == 0 {
+			continue
+		}
+		z := make([]redis.Z, len(members))
+		for i, m := range members {
+			z[i] = redis.Z{Score: m.Score / factor, Member: m.Member}
+		}
+		if err := s.rdb.ZAdd(ctx, key, z...).Err(); err != nil {
+			return 0, err
+		}
+	}
+	return factor, nil
+}
+
+// ResetCoOccurrence deletes all co-occurrence sets so the batch layer can rebuild
+// them exactly from history (correcting any online double-counting drift from
+// at-least-once delivery; docs/06).
+func (s *Store) ResetCoOccurrence(ctx context.Context) (int, error) {
+	var keys []string
+	iter := s.rdb.Scan(ctx, 0, "cooc:*", 200).Iterator()
+	for iter.Next(ctx) {
+		keys = append(keys, iter.Val())
+	}
+	if err := iter.Err(); err != nil {
+		return 0, err
+	}
+	for i := 0; i < len(keys); i += 500 {
+		end := i + 500
+		if end > len(keys) {
+			end = len(keys)
+		}
+		if err := s.rdb.Del(ctx, keys[i:end]...).Err(); err != nil {
+			return 0, err
+		}
+	}
+	return len(keys), nil
+}
+
+// CoOccEntry is one symmetric co-occurrence weight to add.
+type CoOccEntry struct {
+	A, B   int64
+	Weight float64
+}
+
+// AddCoOccurrenceBatch writes many co-occurrence increments in one pipeline.
+func (s *Store) AddCoOccurrenceBatch(ctx context.Context, entries []CoOccEntry) error {
+	pipe := s.rdb.Pipeline()
+	for _, e := range entries {
+		if e.A == e.B {
+			continue
+		}
+		pipe.ZIncrBy(ctx, coocKey(e.A), e.Weight, itoa(e.B))
+		pipe.ZIncrBy(ctx, coocKey(e.B), e.Weight, itoa(e.A))
+	}
+	_, err := pipe.Exec(ctx)
+	return err
+}
+
 // --- profile read (called by the API on every request) ---
 
 // GetProfile assembles the user's live profile from the individual keys. Missing
