@@ -260,6 +260,28 @@ func (s *Store) AllUserIDs(ctx context.Context) ([]int64, error) {
 	return ids, rows.Err()
 }
 
+// AllInteractions streams the full interaction log in chronological order. Used
+// by the offline evaluator to build a leakage-free train/test split.
+func (s *Store) AllInteractions(ctx context.Context) ([]models.Event, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT user_id, item_id, event_type, value, ts FROM interactions ORDER BY ts`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.Event
+	for rows.Next() {
+		var e models.Event
+		var t string
+		if err := rows.Scan(&e.UserID, &e.ItemID, &t, &e.Value, &e.Timestamp); err != nil {
+			return nil, err
+		}
+		e.Type = models.EventType(t)
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // CountItems returns the number of catalog rows (used to size the ANN index).
 func (s *Store) CountItems(ctx context.Context) (int, error) {
 	var n int
