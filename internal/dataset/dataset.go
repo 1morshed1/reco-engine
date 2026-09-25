@@ -174,6 +174,23 @@ func GenerateInteractions(p Params, catalog []models.Item, users []LatentUser) [
 	return events
 }
 
+// SampleForUser returns one affinity-weighted random item for the user, drawn
+// from a fresh random shortlist. Exported so the live producer can generate
+// realistic events using the same taste model as the seeder.
+func SampleForUser(rng *rand.Rand, u LatentUser, catalog []models.Item, shortlist int) models.Item {
+	items := make([]models.Item, 0, shortlist)
+	weights := make([]float64, 0, shortlist)
+	var total float64
+	for k := 0; k < shortlist; k++ {
+		it := catalog[rng.Intn(len(catalog))]
+		w := math.Exp(u.affinity(it))
+		items = append(items, it)
+		weights = append(weights, w)
+		total += w
+	}
+	return sampleWeighted(rng, items, weights, total)
+}
+
 // Embed computes and returns content embeddings for every item, keyed by item
 // ID. Used by the seeder to populate the pgvector column.
 func Embed(catalog []models.Item, dim int) map[int64][]float32 {
