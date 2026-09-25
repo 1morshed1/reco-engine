@@ -33,7 +33,10 @@ func Load() Config {
 		KafkaGroupID:     env("KAFKA_GROUP_ID", "reco-processor"),
 		APIAddr:          env("API_ADDR", ":8080"),
 		EmbeddingDim:     envInt("EMBEDDING_DIM", 32),
-		TrendingHalfLife: time.Duration(envInt("TRENDING_HALFLIFE_HOURS", 24)) * time.Hour,
+		// Half-life for trending time-decay. 168h (1 week) keeps the exponential-
+		// increment scores well within float64 range for ~decades (a smaller
+		// half-life shortens that horizon; see docs/05 overflow caveat).
+		TrendingHalfLife: time.Duration(envInt("TRENDING_HALFLIFE_HOURS", 168)) * time.Hour,
 	}
 }
 

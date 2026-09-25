@@ -209,6 +209,19 @@ func (s *Store) LogRecommendations(ctx context.Context, userID int64, items []mo
 	return s.sendBatch(ctx, batch, len(items))
 }
 
+// MarkClicked flags the most recent served recommendation of (user,item) as
+// clicked, closing the loop for CTR/online evaluation.
+func (s *Store) MarkClicked(ctx context.Context, userID, itemID int64) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE recommendations SET clicked = true
+		WHERE id = (
+			SELECT id FROM recommendations
+			WHERE user_id = $1 AND item_id = $2
+			ORDER BY served_at DESC LIMIT 1
+		)`, userID, itemID)
+	return err
+}
+
 // UserInteractions returns all item IDs a user interacted with (for eval ground
 // truth and for filtering already-seen items).
 func (s *Store) UserInteractions(ctx context.Context, userID int64) ([]int64, error) {

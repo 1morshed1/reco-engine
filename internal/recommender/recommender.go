@@ -88,8 +88,22 @@ func (s *Service) Recommend(ctx context.Context, userID int64, n int) (Result, e
 		ids[i] = c.Item.ID
 	}
 	if scores, err := s.redis.TrendingScores(ctx, ids); err == nil {
+		// Raw trending scores are on an arbitrary, ever-growing scale (the
+		// exponential-increment decay, docs/05). Their absolute magnitude is
+		// meaningless — only relative order is. So we normalize them to [0,1]
+		// WITHIN this candidate pool before ranking, otherwise the huge raw
+		// values would swamp every other feature. Popularity thus means
+		// "popular relative to the other candidates for this request".
+		var maxScore float64
+		for _, id := range ids {
+			if v := scores[id]; v > maxScore {
+				maxScore = v
+			}
+		}
 		for i := range filtered {
-			filtered[i].PopularityScore = scores[filtered[i].Item.ID]
+			if maxScore > 0 {
+				filtered[i].PopularityScore = scores[filtered[i].Item.ID] / maxScore
+			}
 		}
 	}
 

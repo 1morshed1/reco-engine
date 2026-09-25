@@ -61,8 +61,9 @@ func (r *Ranker) Score(p models.UserProfile, c models.Candidate) float64 {
 	// Embedding similarity: how close the item is to the user's taste vector.
 	s += w.EmbeddingSimilarity * c.SimilarityScore
 
-	// Popularity: log-scaled so a runaway-popular item can't dominate purely on
-	// volume (diminishing returns).
+	// Popularity: PopularityScore arrives normalized to [0,1] within the request's
+	// candidate pool (the recommender rescales the raw, arbitrarily-large trending
+	// scores). log1p keeps the diminishing-returns shape on that [0,1] range.
 	s += w.Popularity * math.Log1p(c.PopularityScore)
 
 	// Recency: exponential decay in days-since-created; newer scores higher.
