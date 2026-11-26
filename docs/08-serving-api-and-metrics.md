@@ -37,7 +37,7 @@ pre-computed state* and does light math. No training, no full-catalog scan.
 
 ## The metrics (`internal/metrics`)
 
-Four instruments, matching the plan's observability goals:
+Four instruments, covering the core observability goals:
 
 | Metric | Type | What it tells you |
 |--------|------|-------------------|

@@ -53,12 +53,12 @@ func New(ctx context.Context, addr string, halfLife time.Duration) (*Store, erro
 func (s *Store) Close() error { return s.rdb.Close() }
 
 // key helpers keep the naming scheme in one place.
-func recentKey(u int64) string   { return "recent:" + itoa(u) }
-func catKey(u int64) string      { return "catcount:" + itoa(u) }
-func priceKey(u int64) string    { return "price:" + itoa(u) }
-func embKey(u int64) string      { return "emb:" + itoa(u) }
-func metaKey(u int64) string     { return "meta:" + itoa(u) }
-func coocKey(item int64) string  { return "cooc:" + itoa(item) }
+func recentKey(u int64) string    { return "recent:" + itoa(u) }
+func catKey(u int64) string       { return "catcount:" + itoa(u) }
+func priceKey(u int64) string     { return "price:" + itoa(u) }
+func embKey(u int64) string       { return "emb:" + itoa(u) }
+func metaKey(u int64) string      { return "meta:" + itoa(u) }
+func coocKey(item int64) string   { return "cooc:" + itoa(item) }
 func trendCatKey(c string) string { return "trending:" + c }
 
 const trendGlobalKey = "trending"

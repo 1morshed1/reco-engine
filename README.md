@@ -1,64 +1,123 @@
-# Real-Time Recommendation Engine (Go + Kafka + Redis + pgvector)
+# Real-Time Recommendation Engine
 
-A production-shaped recommendation **serving** system: user activity streams in
-through Kafka, becomes live user profiles and item statistics in Redis, and a Go
-API answers recommendation requests in tens of milliseconds using a two-stage
-**retrieval → ranking** pipeline over a movie catalog in Postgres with pgvector
-ANN search.
+[![CI](https://github.com/1morshed1/reco-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/1morshed1/reco-engine/actions/workflows/ci.yml)
+![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Built as a learning project. The `docs/` folder is a full learning journal that
-explains every decision — **start there** (`docs/00-overview.md`).
+A recommendation **serving** system in Go. User activity streams in through
+Kafka, becomes live user profiles and item statistics in Redis, and an HTTP API
+answers recommendation requests in single-digit milliseconds. Each request runs a
+two-stage **retrieval → ranking → diversity** pipeline over a movie catalog
+stored in Postgres, using pgvector for approximate-nearest-neighbour search.
 
-## Why it exists
+**Highlights**
 
-"Design a recommendation system" is the most common ML system-design interview
-question, and almost nobody has built the hard part: real-time serving
-(candidate generation, ranking, diversity) under a latency budget. This is that
-part, running end to end.
+- **p50 4.2 ms / p99 8.5 ms** per request, against a 50 ms target. Throughput
+  reaches ~1,500 req/s on a single laptop that also runs Kafka, Redis and Postgres.
+- **Beats the popularity baseline** on precision, recall and nDCG in a
+  leakage-free offline evaluation, with **~30× the catalog coverage** (0.21 vs
+  0.007).
+- **Four candidate sources fan out in parallel** (embedding ANN, co-occurrence,
+  trending, fresh), then a weighted feature ranker and MMR diversification.
+- **Event-driven online state.** A Kafka consumer keeps user taste vectors,
+  "also viewed" counts and time-decayed trending scores up to date in Redis.
+- **Graceful cold start.** A brand-new user is served from trending and fresh
+  items, with no special case in the request path.
+- **Full loop.** Includes a nightly Go batch job, a Prometheus metrics endpoint,
+  a load tester and an offline evaluation harness.
 
-## Architecture at a glance
+## Architecture
 
+```mermaid
+flowchart LR
+    P[producer<br/>simulated users] -->|user-events| K[(Kafka)]
+    K --> PR[processor]
+    PR -->|profiles, co-occurrence,<br/>trending| R[(Redis)]
+
+    C[client] -->|GET /recommend/:user| API
+    subgraph API [API · per request]
+        direction LR
+        RET[1 · retrieval<br/>4 sources in parallel] --> RANK[2 · ranking<br/>weighted features] --> DIV[3 · MMR<br/>diversity]
+    end
+    R --> RET
+    PG[(Postgres<br/>+ pgvector)] -->|ANN search| RET
+    DIV -->|top-N| C
+    DIV -.->|served-list log| PG
+
+    B[batch job<br/>nightly] --> PG
+    B --> R
+    API -->|/metrics| PROM[Prometheus]
 ```
-events ──▶ Kafka ──▶ Processor ──▶ Redis (profiles, co-occurrence, trending)
-                                      │
-   HTTP request ──▶ API ──▶ [retrieval → ranking → diversity] ──▶ top-N
-                              │            │
-                     pgvector ANN     Postgres catalog + logs
-```
 
-Two stages, because you can't score a whole catalog per request:
-1. **Retrieval** — pull ~200 candidates from 4 sources in parallel (embeddings,
-   "also viewed", trending, fresh). Fast, wide, imprecise.
-2. **Ranking** — score those 200 with a feature-rich formula. Slow, narrow,
-   precise. Then MMR diversity → final top-N.
+Scoring the whole catalog on every request is too slow, so the pipeline has two
+stages:
 
-## Tech choices (full rationale in `docs/01`)
+1. **Retrieval** pulls ~200 candidates from four sources concurrently:
+   - embedding ANN (content match to the user's taste vector)
+   - "users who viewed X also viewed Y"
+   - trending in the user's categories
+   - fresh items, for exploration
 
-| Concern        | Choice                          |
-|----------------|---------------------------------|
-| Serving        | Go (goroutine fan-out, low p99) |
-| Event bus      | Kafka (KRaft), `segmentio/kafka-go` |
-| Online state   | Redis (sorted sets, hashes)     |
-| Catalog + ANN  | Postgres + pgvector             |
-| Metrics        | Prometheus                      |
-| Batch/eval     | Go command on cron (not Airflow)|
+   Each source covers a blind spot of the others. This stage is fast and
+   wide but not precise.
+2. **Ranking** scores those candidates with a feature formula: similarity,
+   popularity, recency, price match, category match, rating and a per-source
+   boost. MMR then trades relevance against novelty to pick the final top-N.
+
+The full design rationale is in [`docs/01-architecture-decisions.md`](docs/01-architecture-decisions.md).
+
+## Results
+
+**Offline quality** (`make eval`, time-based train/test split, K=10). Details in [`docs/09`](docs/09-evaluation.md).
+
+| Strategy                       | Precision@10 | Recall@10 | nDCG@10    | Coverage  |
+|--------------------------------|-------------:|----------:|-----------:|----------:|
+| Popularity (baseline)          | 0.0056       | 0.0077    | 0.0066     | 0.007     |
+| Embedding only                 | **0.0074**   | **0.0103**| 0.0082     | 0.189     |
+| Full pipeline                  | 0.0072       | 0.0097    | **0.0092** | **0.214** |
+
+The full pipeline has the best ranking quality (nDCG) and catalog coverage. It
+avoids the filter bubble that the popularity baseline creates.
+
+**Latency** (`make loadtest`, all services in Docker on one laptop). Details in [`docs/11`](docs/11-benchmarks-and-performance.md).
+
+| Load              | p50     | p90   | p99        | Throughput  | Errors |
+|-------------------|--------:|------:|-----------:|------------:|-------:|
+| Concurrency 4     | 4.2 ms  | –     | **8.5 ms** | 911 req/s   | 0      |
+| Concurrency 50    | 31 ms   | 44 ms | 60 ms      | ~1,500 req/s| 0      |
+
+At concurrency 50, the p99 is limited by CPU contention with the co-located Kafka,
+Redis and Postgres containers, not by the pipeline. Dropping to concurrency 4 made
+latency fall to single-digit milliseconds, which confirmed it. Item hydration and
+fresh-item listing are served from an in-memory catalog, so ANN search is the only
+Postgres call on the request path (see `docs/11`).
+
+## Tech stack
+
+| Concern        | Choice                                   | Why |
+|----------------|------------------------------------------|-----|
+| Serving        | Go                                       | Goroutine fan-out across sources, low and predictable p99 |
+| Event bus      | Kafka (KRaft), `segmentio/kafka-go`      | Durable, replayable event log |
+| Online state   | Redis (sorted sets, hashes)              | Sub-millisecond reads on the request path |
+| Catalog + ANN  | Postgres + pgvector (IVFFlat)               | One store for catalog, logs and vector search |
+| Metrics        | Prometheus                               | Request-latency and candidate-pool histograms |
+| Batch / eval   | Go commands on cron                      | No Airflow needed at this scale |
 
 ## Quick start
 
-Prereqs: Docker + Docker Compose, Go 1.24+.
+Prerequisites: Docker with Docker Compose, and Go 1.25+.
 
 ```bash
 make up          # start postgres, redis, kafka, prometheus
-make tidy        # resolve Go dependencies
-make seed        # apply schema, load catalog, embeddings, ANN index, history
+make seed        # apply schema, load catalog + embeddings, build ANN index, history
 ```
 
-Then, in separate terminals, run the streaming + serving stack:
+Then run the streaming and serving processes, each in its own terminal:
 
 ```bash
-make processor   # terminal 2: consume events -> update Redis
-make producer    # terminal 3: simulate live user activity into Kafka
-make api         # terminal 4: serve recommendations on :8080
+make processor   # consume events -> update Redis
+make producer    # simulate live user activity into Kafka
+make api         # serve recommendations on :8080
 ```
 
 Query it:
@@ -67,44 +126,45 @@ Query it:
 curl 'http://localhost:8080/api/v1/recommend/42?n=10'      # recommendations
 curl -XPOST localhost:8080/api/v1/click \
   -H 'Content-Type: application/json' -d '{"user_id":42,"item_id":1156}'
-curl localhost:8080/metrics                                 # prometheus metrics
+curl localhost:8080/metrics                                 # Prometheus metrics
 ```
 
-Offline quality, the nightly batch job, and a load test:
+Evaluation, batch job, load test and checks:
 
 ```bash
 make eval        # precision@k, recall@k, nDCG, coverage (3 strategies compared)
 make batch       # recompute embeddings, rebuild co-occurrence, rescale trending
 make loadtest    # throughput + latency percentiles
 make test        # unit tests
+make lint        # gofmt + go vet (same as CI)
 ```
-
-## Results
-
-- **Quality** (offline, leakage-free eval): personalized strategies beat the
-  popularity baseline on precision/recall/nDCG; the full pipeline has the best
-  nDCG and **~30x the catalog coverage** of popularity (0.21 vs 0.007 — it escapes
-  the filter bubble). See `docs/09`.
-- **Latency**: the pipeline serves at **p50 ~4ms, p99 ~8.5ms** — well under the
-  50ms target. (Under a single-laptop-shared-with-all-services load test at c=50,
-  p99 rises to ~60ms due to CPU contention, not the pipeline; see `docs/11`.)
-- **Personalization works**: a SciFi-leaning user gets SciFi recommendations; a
-  brand-new user is served gracefully from trending/fresh (cold start).
 
 ## Repository layout
 
 ```
 cmd/         entrypoints: api, processor, seed, producer, eval, batch, loadtest
-internal/    the engine: config, models, store/{postgres,redisstore},
-             catalog, embedding, dataset, events, profile, candidates,
-             ranking, diversity, recommender, metrics
-migrations/  SQL schema (embedded)
-deploy/      prometheus config
-docs/        the learning journal — read docs/README.md first
+internal/
+  recommender/   request-time orchestration (profile → retrieve → rank → diversify)
+  candidates/    stage 1: parallel multi-source retrieval
+  ranking/       stage 2: feature-weighted scoring
+  diversity/     MMR re-ranking
+  profile/       event → online-state updates (processor)
+  catalog/       in-memory catalog cache for the hot path
+  store/         postgres (catalog, ANN, logs) and redisstore (online state)
+  embedding/ dataset/ events/ metrics/ config/ models/
+migrations/  SQL schema (embedded into the binary)
+deploy/      Prometheus config
+docs/        design notes, one per subsystem
 ```
 
-## Status
+## Design notes
 
-Complete and runnable. Built in phases, each with its own learning doc in
-`docs/` and its own commit. The `docs/` folder is the primary deliverable — it
-explains every decision so the codebase doubles as a course.
+[`docs/`](docs/README.md) holds one write-up per subsystem. Each covers the
+problem, the options considered, the choice made and its trade-offs. Topics
+include the data model, embeddings and ANN, streaming semantics, ranking and
+diversity, evaluation methodology, and performance work. Start with
+[`docs/00-overview.md`](docs/00-overview.md).
+
+## License
+
+[MIT](LICENSE)

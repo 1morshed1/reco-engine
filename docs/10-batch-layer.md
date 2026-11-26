@@ -2,7 +2,7 @@
 
 This doc covers `cmd/batch`. It's the **cold path** — work that runs
 occasionally, isn't latency-sensitive, and corrects or refreshes the state the
-hot path depends on. The plan calls for Airflow here; we deliberately used a
+hot path depends on. A typical setup would reach for Airflow here; we deliberately used a
 plain Go job instead (docs/01 D9) and this doc explains what it does and why.
 
 ## The three data planes, one more time

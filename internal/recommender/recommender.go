@@ -10,12 +10,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/1morshed1/reco-engine/internal/candidates"
-	"github.com/1morshed1/reco-engine/internal/models"
-	"github.com/1morshed1/reco-engine/internal/ranking"
-	"github.com/1morshed1/reco-engine/internal/store/postgres"
-	"github.com/1morshed1/reco-engine/internal/store/redisstore"
 	"github.com/1morshed1/reco-engine/internal/diversity"
+	"github.com/1morshed1/reco-engine/internal/models"
 )
 
 // Config tunes the orchestration.
@@ -40,17 +36,43 @@ type Result struct {
 	TookMS            float64             `json:"took_ms"`
 }
 
+// The collaborators are expressed as narrow interfaces, declared here where
+// they are consumed. The concrete *redisstore.Store, *postgres.Store,
+// *candidates.Retriever and *ranking.Ranker satisfy them; tests substitute
+// in-memory fakes so the orchestration logic runs without Redis or Postgres.
+
+// ProfileStore reads hot online state (user profiles, trending scores).
+type ProfileStore interface {
+	GetProfile(ctx context.Context, userID int64, recentN, topCategories int) (models.UserProfile, error)
+	TrendingScores(ctx context.Context, ids []int64) (map[int64]float64, error)
+}
+
+// RecLogger persists served recommendation lists for CTR and offline eval.
+type RecLogger interface {
+	LogRecommendations(ctx context.Context, userID int64, items []models.ScoredItem) error
+}
+
+// Retriever is Stage 1: candidate generation.
+type Retriever interface {
+	Retrieve(ctx context.Context, p models.UserProfile) []models.Candidate
+}
+
+// Ranker is Stage 2: scoring.
+type Ranker interface {
+	Rank(p models.UserProfile, cands []models.Candidate) []models.ScoredItem
+}
+
 // Service holds the collaborators.
 type Service struct {
-	redis     *redisstore.Store
-	pg        *postgres.Store
-	retriever *candidates.Retriever
-	ranker    *ranking.Ranker
+	redis     ProfileStore
+	pg        RecLogger
+	retriever Retriever
+	ranker    Ranker
 	cfg       Config
 }
 
 // New builds the service.
-func New(rs *redisstore.Store, pg *postgres.Store, ret *candidates.Retriever, rk *ranking.Ranker, cfg Config) *Service {
+func New(rs ProfileStore, pg RecLogger, ret Retriever, rk Ranker, cfg Config) *Service {
 	return &Service{redis: rs, pg: pg, retriever: ret, ranker: rk, cfg: cfg}
 }
 

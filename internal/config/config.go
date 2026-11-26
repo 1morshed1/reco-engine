@@ -13,26 +13,26 @@ import (
 
 // Config holds every tunable the services read at startup.
 type Config struct {
-	PostgresDSN  string        // Postgres connection string.
-	RedisAddr    string        // host:port for Redis.
-	KafkaBrokers []string      // Kafka bootstrap brokers.
-	KafkaTopic   string        // Topic carrying user activity events.
-	KafkaGroupID string        // Consumer group for the processor.
-	APIAddr      string        // Listen address for the HTTP API.
-	EmbeddingDim int           // Dimensionality of item/user embeddings.
+	PostgresDSN      string        // Postgres connection string.
+	RedisAddr        string        // host:port for Redis.
+	KafkaBrokers     []string      // Kafka bootstrap brokers.
+	KafkaTopic       string        // Topic carrying user activity events.
+	KafkaGroupID     string        // Consumer group for the processor.
+	APIAddr          string        // Listen address for the HTTP API.
+	EmbeddingDim     int           // Dimensionality of item/user embeddings.
 	TrendingHalfLife time.Duration // Half-life for trending time-decay.
 }
 
 // Load reads configuration from the environment, applying defaults.
 func Load() Config {
 	return Config{
-		PostgresDSN:      env("POSTGRES_DSN", "postgres://reco:reco@localhost:5432/reco?sslmode=disable"),
-		RedisAddr:        env("REDIS_ADDR", "localhost:6379"),
-		KafkaBrokers:     []string{env("KAFKA_BROKERS", "localhost:9092")},
-		KafkaTopic:       env("KAFKA_TOPIC", "user-events"),
-		KafkaGroupID:     env("KAFKA_GROUP_ID", "reco-processor"),
-		APIAddr:          env("API_ADDR", ":8080"),
-		EmbeddingDim:     envInt("EMBEDDING_DIM", 32),
+		PostgresDSN:  env("POSTGRES_DSN", "postgres://reco:reco@localhost:5432/reco?sslmode=disable"),
+		RedisAddr:    env("REDIS_ADDR", "localhost:6379"),
+		KafkaBrokers: []string{env("KAFKA_BROKERS", "localhost:9092")},
+		KafkaTopic:   env("KAFKA_TOPIC", "user-events"),
+		KafkaGroupID: env("KAFKA_GROUP_ID", "reco-processor"),
+		APIAddr:      env("API_ADDR", ":8080"),
+		EmbeddingDim: envInt("EMBEDDING_DIM", 32),
 		// Half-life for trending time-decay. 168h (1 week) keeps the exponential-
 		// increment scores well within float64 range for ~decades (a smaller
 		// half-life shortens that horizon; see docs/05 overflow caveat).

@@ -1,6 +1,6 @@
 # 11 — Benchmarks and Performance
 
-This doc covers `cmd/loadtest` and what we learned running it. The plan sets two
+This doc covers `cmd/loadtest` and what we learned running it. The design sets two
 serving targets: **p99 < 50ms** and **thousands of QPS on one instance**. Here's
 what we measured, honestly, and what the numbers actually mean.
 
@@ -60,7 +60,7 @@ The lesson: **measure before optimizing.** We confirmed the real ceiling by
 dropping concurrency (c=4) and seeing latency collapse to single-digit ms, which
 pointed straight at CPU contention rather than the data layer.
 
-## How this scales to the plan's targets on real hardware
+## How this scales to the targets on real hardware
 
 The architecture is built to hit thousands of QPS per instance and scale
 horizontally:

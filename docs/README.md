@@ -1,11 +1,11 @@
-# Learning Journal — Read in Order
+# Design Notes — Read in Order
 
-This folder is the whole point of the project: a guided explanation of how a
-real-time recommendation engine is built, decision by decision. Each doc explains
+These notes explain how this real-time recommendation engine is built,
+decision by decision. Each doc explains
 the *why*, the *tradeoffs*, and the *production alternatives* — not just the code.
 Read them in order; each builds on the last.
 
-| # | Doc | What you'll learn |
+| # | Doc | What it covers |
 |---|-----|-------------------|
 | 00 | [Overview](00-overview.md) | The whole system in one picture: the two-stage (retrieval → ranking) pipeline, the three data planes, the latency budget. **Start here.** |
 | 01 | [Architecture Decisions](01-architecture-decisions.md) | Every major choice as an ADR: Go, Kafka/KRaft, Redis+pgvector, content embeddings, weighted ranking, MMR, batch-vs-Airflow — with the tradeoffs. |

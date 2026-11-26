@@ -8,6 +8,7 @@
 //   - collab    : "users who viewed X also viewed Y" (co-occurrence)   -> cold-start blind
 //   - trending  : popular-right-now in the user's categories          -> not personalized
 //   - fresh     : new items in preferred categories (exploration)     -> quality unknown
+//
 // Blended, they produce a robust pool for any user, including brand-new ones.
 package candidates
 
@@ -23,12 +24,12 @@ import (
 
 // Config sizes each retrieval source.
 type Config struct {
-	ANNTopK       int // items from embedding ANN search
-	RecentWindow  int // how many recent items to seed co-occurrence from
-	CoOccPerItem  int // co-occurring items to pull per recent item
-	TrendingK     int // trending items to pull
-	FreshK        int // fresh items to pull
-	FreshDays     int // "fresh" = created within this many days
+	ANNTopK      int // items from embedding ANN search
+	RecentWindow int // how many recent items to seed co-occurrence from
+	CoOccPerItem int // co-occurring items to pull per recent item
+	TrendingK    int // trending items to pull
+	FreshK       int // fresh items to pull
+	FreshDays    int // "fresh" = created within this many days
 }
 
 // DefaultConfig returns sizes that yield a ~200-candidate pool.

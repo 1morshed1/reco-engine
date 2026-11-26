@@ -24,9 +24,9 @@ import (
 
 // Store is an immutable snapshot of the catalog. Safe for concurrent reads.
 type Store struct {
-	byID       map[int64]models.Candidate // id -> candidate (item + embedding)
-	byCreated  []int64                    // item IDs sorted by created_at DESC (for Fresh)
-	itemByID   map[int64]models.Item
+	byID      map[int64]models.Candidate // id -> candidate (item + embedding)
+	byCreated []int64                    // item IDs sorted by created_at DESC (for Fresh)
+	itemByID  map[int64]models.Item
 }
 
 // Load builds the snapshot from Postgres. Call once at startup (and again from a

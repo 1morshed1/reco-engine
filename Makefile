@@ -78,3 +78,8 @@ loadtest: ## Benchmark the API (throughput + latency percentiles)
 .PHONY: test
 test: ## Run unit tests
 	go test ./...
+
+.PHONY: lint
+lint: ## Check formatting and run go vet (what CI runs)
+	@test -z "$$(gofmt -l .)" || (echo "gofmt needed on:"; gofmt -l .; exit 1)
+	go vet ./...

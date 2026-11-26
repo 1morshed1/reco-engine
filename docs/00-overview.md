@@ -1,6 +1,6 @@
 # 00 — Overview: What We're Building and Why
 
-> This `docs/` folder is a **learning journal**. Each file explains not just
+> This `docs/` folder holds the **design notes**. Each file explains not just
 > *what* the code does, but *why* it's built that way and what the production
 > alternatives are. Read them in numeric order. They are written to be useful
 > even if you never touch the code.

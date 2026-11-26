@@ -64,14 +64,14 @@ type Item struct {
 // every recommendation request. It is rebuilt from the event stream, never
 // authored directly.
 type UserProfile struct {
-	UserID              int64          `json:"user_id"`
-	RecentlyViewed      []int64        `json:"recently_viewed"`      // most-recent-first item IDs
-	PreferredCategories []string       `json:"preferred_categories"` // top categories by weighted count
-	CategoryCounts      map[string]float64 `json:"category_counts"`  // weighted interaction count per category
-	AvgPrice            float64        `json:"avg_price"`            // mean price of items interacted with
-	PriceStd            float64        `json:"price_std"`            // std dev of those prices (for price-match)
-	Embedding           []float32      `json:"embedding"`            // running average of interacted item embeddings
-	InteractionCount    int64          `json:"interaction_count"`
+	UserID              int64              `json:"user_id"`
+	RecentlyViewed      []int64            `json:"recently_viewed"`      // most-recent-first item IDs
+	PreferredCategories []string           `json:"preferred_categories"` // top categories by weighted count
+	CategoryCounts      map[string]float64 `json:"category_counts"`      // weighted interaction count per category
+	AvgPrice            float64            `json:"avg_price"`            // mean price of items interacted with
+	PriceStd            float64            `json:"price_std"`            // std dev of those prices (for price-match)
+	Embedding           []float32          `json:"embedding"`            // running average of interacted item embeddings
+	InteractionCount    int64              `json:"interaction_count"`
 }
 
 // Candidate is an item proposed by a retrieval source, carrying the metadata the

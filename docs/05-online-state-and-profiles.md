@@ -100,5 +100,5 @@ docs/06–07).
 
 `profile.Updater` loads the whole catalog (metadata + embeddings) into memory at
 startup so per-event handling needs no DB lookup for item fields. At 2000 items
-that's trivial. In production this is where a **feature store** (Project F) or a
+that's trivial. In production this is where a **feature store** or a
 Redis-cached item table would sit; the seam is the `items`/`embs` maps.

@@ -22,11 +22,11 @@ import (
 
 // Params control the size of the generated world.
 type Params struct {
-	NumItems        int   // catalog size
-	NumUsers        int   // number of simulated users
-	EventsPerUser   int   // historical interactions generated per user
-	Seed            int64 // RNG seed for reproducibility
-	HistoryDays     int   // spread events over the last N days
+	NumItems      int   // catalog size
+	NumUsers      int   // number of simulated users
+	EventsPerUser int   // historical interactions generated per user
+	Seed          int64 // RNG seed for reproducibility
+	HistoryDays   int   // spread events over the last N days
 }
 
 // Default returns sensible sizes for a laptop-scale demo.
@@ -86,10 +86,10 @@ func Catalog(p Params) []models.Item {
 // never sees this — it only sees the events it produces. The evaluator uses it
 // (indirectly, via held-out interactions) as ground truth.
 type LatentUser struct {
-	ID          int64
-	FavGenres   []string // genres this user actually likes
-	PriceMean   float64  // preferred price point
-	PriceStd    float64
+	ID        int64
+	FavGenres []string // genres this user actually likes
+	PriceMean float64  // preferred price point
+	PriceStd  float64
 }
 
 // Users builds deterministic latent users, each with 1–3 favorite genres and a
